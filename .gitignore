@@ -1,4 +1,11 @@
+# 虚拟环境
+trans_env/
+
+# IDE临时文件
+.ipynb_checkpoints/
+
+# 模型文件
 *.pt
-__pycache__/
-.DS_Store
+
+# 数据
 sales_textbook.txt
