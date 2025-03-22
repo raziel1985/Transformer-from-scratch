@@ -8,11 +8,6 @@ d_model = 512
 num_blocks = 12
 num_heads = 8
 dropout = 0.1
-device = ('mps' if torch.backends.mps.is_available() 
-else ('cuda' if torch.cuda.is_available() else 'cpu'))
-print("device:", device)
-TORCH_SEED = 1337
-torch.manual_seed(TORCH_SEED)
 
 class FeedForward(nn.Module):
     def __init__(self, d_model, dropout):
@@ -86,14 +81,14 @@ class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout, max_len):
         super().__init__()
         self.dropout = nn.Dropout(dropout)
-        self.positional_encoding = torch.zeros((1, max_len, d_model), device=device)
+        self.positional_encoding = torch.zeros((1, max_len, d_model))
         X = (torch.arange(max_len, dtype=torch.float32).reshape(-1, 1) /
              torch.pow(10000, torch.arange(0, d_model, 2, dtype=torch.float32) / d_model))
         self.positional_encoding[:, :, 0::2] = torch.sin(X)
         self.positional_encoding[:, :, 1::2] = torch.cos(X)
 
     def forward(self, x):
-        x = x + self.positional_encoding[:, :x.shape[1], :]
+        x = x + self.positional_encoding[:, :x.shape[1], :].to(x.device)
         return self.dropout(x)
 
 

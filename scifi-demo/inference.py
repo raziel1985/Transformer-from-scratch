@@ -1,11 +1,9 @@
-import os
 import torch
 from model import Model
 
-
-# device = ('mps' if torch.backends.mps.is_available() 
-# else ('cuda' if torch.cuda.is_available() else 'cpu'))
-# print("device:", device)
+device = ('mps' if torch.backends.mps.is_available() 
+else ('cuda' if torch.cuda.is_available() else 'cpu'))
+print("device:", device)
 TORCH_SEED = 1337
 torch.manual_seed(TORCH_SEED)
 torch.cuda.manual_seed(TORCH_SEED)
@@ -28,16 +26,17 @@ decode = lambda idxs: ''.join([idx2char[idx] for idx in idxs])
 print(encode("hello world"))
 print(decode(encode("hello world")))
 
-# 构建模型
-model = Model(vocab_size)
+# 加载模型
+model = Model(vocab_size).to(device)
 print("loading model...")
-model.load_state_dict(torch.load('model/model-scifi.pt'))
+#model.load_state_dict(torch.load('model/model-scifi.pt'))#
+model.load_state_dict(torch.load('model/model-scifi-finetune.pt'))
 print("model loaded")
 model.eval()
 
 # 推理
 start = "小明喜欢打篮球，体育很不错，他立志要成为球星。"
 start_ids = encode(start)
-x = torch.tensor(start_ids, dtype=torch.long).unsqueeze(0)
+x = torch.tensor(start_ids, dtype=torch.long, device=device).unsqueeze(0)
 y = model.generate(x, max_new_tokens=500)
 print(decode(y[0].tolist()))
