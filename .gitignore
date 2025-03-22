@@ -1,8 +1,11 @@
-# 虚拟环境
+# 虚拟环境目录
 trans_env/
 
-# IDE临时文件
+# notebook临时文件目录
 .ipynb_checkpoints/
+
+# python编译文件
+*.pyc
 
 # 模型文件
 *.pt
