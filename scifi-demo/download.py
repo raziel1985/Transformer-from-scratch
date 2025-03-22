@@ -10,6 +10,7 @@ def download_file(url, save_path):
         for chunk in response.iter_content(chunk_size=8192):
             file.write(chunk)
 
+
 # 下载finetune数据集
 url = "https://huggingface.co/datasets/zxbsmk/webnovel_cn/resolve/main/novel_cn_token512_50k.json?download=true"
 save_path = "data_finetune/scifi-finetune.json"
@@ -20,7 +21,8 @@ if not os.path.exists(save_path):
 else:
     print("File already exists.")
 
-# 下载小说合集
+
+# 下载训练数据集合：小说合集
 url = "https://huggingface.co/datasets/wzy816/scifi/resolve/main/data.zip?download=true"
 save_path = "data/data.zip"
 if not os.path.exists(save_path):
@@ -31,7 +33,7 @@ else:
     print("File already exists.")
 
 
-# 解压zip文件后，将所有txt文件合并成一个文件
+# 解压训练数据集的zip文件后，将所有txt文件合并成一个文件
 def find_txt_files(folder_path):
     return glob.glob(os.path.join(folder_path, '**', '*.txt'), recursive=True)
 
