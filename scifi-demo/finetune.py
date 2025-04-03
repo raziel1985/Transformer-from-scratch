@@ -16,39 +16,44 @@ print("device:", device)
 TORCH_SEED = 1337
 torch.manual_seed(TORCH_SEED)
 
-# 和训练的流程一样，重复构建同样的词表
-# 加载文本
-with open('data/scifi.all', 'r', encoding='utf-8') as file:
-    text = file.read()
-print(f"文本长度为: {len(text)}")
-print(text[:100])
-
-# 构建词汇表(过大的词表会导致内存不足)
-vocab = sorted(list(set(text)))
-vocab_size = len(vocab)
-print(f"词汇表大小为: {vocab_size}")
-char2idx = {char: idx for idx, char in enumerate(vocab)}
-idx2char = {idx: char for char, idx in char2idx.items()}
-# TODO(rogerluo): 将词表中没有出现过的词，mapping到最后一个token idx上
-encode = lambda x: [char2idx[char] if char in char2idx else vocab_size - 1 for char in x]
-decode = lambda idxs: ''.join([idx2char[idx] for idx in idxs])
-print(encode("hello world"))
-print(decode(encode("hello world")))
-
-# 加载文本
+# 加载finetune文本
 with open('data_finetune/scifi-finetune.json', 'r', encoding='utf-8') as file:
     alpaca = json.load(file)
     text = alpaca[1000:5000]
-print(len(text))
-print(text[0])
-# TODO(rogerluo): 这里对finetune数据源进行暴力改造(json -> string), 后续训练中context_length完全不够喂入完整数据
+print("finetune data num:", len(text))
+print("finetune data sample:", text[0])
+# TODO(rogerluo): 这里对finetune数据源进行暴力改造(json -> string)，只是为了简化快速跑通demo
+# 正常情况下应该先将text按行为单位，划分到训练和验证集；且每行数据都需要终结符；并在预测时按照finetune的数据格式拼接prompt
+# 当前情况将所有数据都拼接到一起了，finetune训练集合中的prompt格式被破坏了
 text = str(text)
-print(len(str(text)))
-print(str(text)[:100])
 
-# 对文本进行编码
-# TODO(rogerluo): 由于使用的是一个小词表，将未知词mapping到最后一个token idx上
-tokenized_text = torch.tensor(encode(text), dtype=torch.long, device=device)
+use_mini_vocab = True
+if use_mini_vocab:
+    # 复用训练时的小词表，需要通过加载训练时的文本来构建词表
+    with open('data/scifi.all', 'r', encoding='utf-8') as file:
+        text = file.read()
+    print(f"文本长度为: {len(text)}")
+    print(text[:100])
+    vocab = sorted(list(set(text)))
+    vocab_size = len(vocab)
+    print(f"词汇表大小为: {vocab_size}")
+    char2idx = {char: idx for idx, char in enumerate(vocab)}
+    idx2char = {idx: char for char, idx in char2idx.items()}
+    # TODO(rogerluo): 将词表中没有出现过的词，强制mapping到最后一个token idx上
+    encode = lambda x: [char2idx[char] if char in char2idx else vocab_size - 1 for char in x]
+    decode = lambda idxs: ''.join([idx2char[idx] for idx in idxs])
+    print(encode("hello world"))
+    print(decode(encode("hello world")))
+    tokenized_text = torch.tensor(encode(text), dtype=torch.long, device=device)
+else:
+    # 使用cl100k_base通用词表
+    tokenizer = tiktoken.get_encoding("cl100k_base")
+    vocab_size = tokenizer.n_vocab
+    print(f"词表大小为: {vocab_size}")
+    print(tokenizer.encode("hello world"))
+    print(tokenizer.decode(tokenizer.encode("hello world")))
+    tokenized_text = torch.tensor(tokenizer.encode(text), dtype=torch.long, device=device)
+
 print(f"tokenized_text shape: {tokenized_text.shape}")
 print(tokenized_text[:100])
 train_size = int(len(tokenized_text) * 0.9)

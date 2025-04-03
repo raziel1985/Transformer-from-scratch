@@ -1,3 +1,4 @@
+import tiktoken
 import torch
 from datetime import datetime
 from model import Model
@@ -21,27 +22,33 @@ with open('data/scifi.all', 'r', encoding='utf-8') as file:
 print(f"文本长度为: {len(text)}")
 print(text[:100])
 
-# 构建词汇表(过大的词表会导致内存不足)
-vocab = sorted(list(set(text)))
-vocab_size = len(vocab)
-print(f"词汇表大小为: {vocab_size}")
-char2idx = {char: idx for idx, char in enumerate(vocab)}
-idx2char = {idx: char for char, idx in char2idx.items()}
-encode = lambda x: [char2idx[char] for char in x]
-decode = lambda idxs: ''.join([idx2char[idx] for idx in idxs])
-print(encode("hello world"))
-print(decode(encode("hello world")))
-
-# 对文本进行编码
-tokenized_text = torch.tensor(encode(text), dtype=torch.long, device=device)
+# 加载词表，对文本进行编码
+use_mini_vocab = True
+if use_mini_vocab:
+    # 构建最小化的词汇表，仅使用数据集中出现过的单词构建最小化的词表，词表大约是7K多
+    vocab = sorted(list(set(text)))
+    vocab_size = len(vocab)
+    print(f"词汇表大小为: {vocab_size}")
+    char2idx = {char: idx for idx, char in enumerate(vocab)}
+    idx2char = {idx: char for char, idx in char2idx.items()}
+    encode = lambda x: [char2idx[char] for char in x]
+    decode = lambda idxs: ''.join([idx2char[idx] for idx in idxs])  
+    print(encode("hello world"))
+    print(decode(encode("hello world")))
+    tokenized_text = torch.tensor(encode(text), dtype=torch.long, device=device)
+else:
+    # 使用cl100k_base，通用性更好，词表大约是100K多，但是embadding层更大训练速度更慢，模型也更大
+    tokenizer = tiktoken.get_encoding("cl100k_base")
+    vocab_size = tokenizer.n_vocab
+    print(f"词表大小为: {vocab_size}")
+    print(tokenizer.encode("hello world"))
+    print(tokenizer.decode(tokenizer.encode("hello world")))
+    tokenized_text = torch.tensor(tokenizer.encode(text), dtype=torch.long, device=device)
 print(f"tokenized_text shape: {tokenized_text.shape}")
 print(tokenized_text[:100])
 train_size = int(len(tokenized_text) * 0.9)
 train_data = tokenized_text[:train_size]
 val_data = tokenized_text[train_size:]
-
-# 构建模型
-model = Model(vocab_size).to(device)
 
 
 def get_batch(split: str):
@@ -52,9 +59,13 @@ def get_batch(split: str):
     return x, y
 
 
+# 构建模型
+model = Model(vocab_size).to(device)
+
+
 # 计算 loss
 @torch.no_grad()
-def estimate_loss():
+def estimate_loss(): 
     out = {}
     model.eval()
     for split in ['train', 'val']:
@@ -70,13 +81,11 @@ def estimate_loss():
 # 训练模型
 print("start training")
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-tracked_loss = list()
 for step in range(max_iters):
     if step % eval_interval == 0 or step == max_iters - 1:
         losses = estimate_loss()
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"step {step}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}, time {current_time}")
-        tracked_loss.append(losses)
     xb, yb = get_batch('train')
     logits, loss = model(xb, yb)
     optimizer.zero_grad(set_to_none=True)
