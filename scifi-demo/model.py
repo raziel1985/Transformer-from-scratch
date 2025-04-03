@@ -12,13 +12,11 @@ dropout = 0.1
 class FeedForward(nn.Module):
     def __init__(self, d_model, dropout):
         super().__init__()
-        self.d_model = d_model
-        self.dropout = dropout
         self.fnn = nn.Sequential(
             nn.Linear(d_model, d_model * 4),
             nn.ReLU(),
             nn.Linear(d_model * 4, d_model),
-            nn.Dropout(dropout),
+            nn.Dropout(dropout)
         )
     
     def forward(self, x):
@@ -51,6 +49,8 @@ class MultiHeadAttention(nn.Module):
 
         # 计算注意力权重
         scores = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.shape[-1])) # [batch_size, num_heads, context_length, context_length]
+        # 使用下三角掩码，使得每个(query)位置只能看到它之前的(key)位置，实现因果性。
+        # 这样做的目的是，在生成文本时，每个位置只能看到它之前生成的内容，而不能看到之后生成的内容，从而实现因果性。
         scores = scores.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # [batch_size, num_heads, context_length, context_length]
         scores = F.softmax(scores, dim=-1) # [batch_size, num_heads, context_length, context_length]    
 
@@ -83,9 +83,10 @@ class PositionalEncoding(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.positional_encoding = torch.zeros((1, max_len, d_model))
         X = (torch.arange(max_len, dtype=torch.float32).reshape(-1, 1) /
-             torch.pow(10000, torch.arange(0, d_model, 2, dtype=torch.float32) / d_model))
-        self.positional_encoding[:, :, 0::2] = torch.sin(X)
-        self.positional_encoding[:, :, 1::2] = torch.cos(X)
+             torch.pow(10000, torch.arange(0, d_model, 2, dtype=torch.float32) / d_model))  # [max_len, d_model]
+        # 偶数维度使用sin，奇数维度使用cos
+        self.positional_encoding[:, :, 0::2] = torch.sin(X) # [max_len, d_model // 2]
+        self.positional_encoding[:, :, 1::2] = torch.cos(X) # [max_len, d_model // 2]
 
     def forward(self, x):
         x = x + self.positional_encoding[:, :x.shape[1], :].to(x.device)
@@ -98,13 +99,13 @@ class Model(nn.Module):
         self.token_embedding = nn.Embedding(vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, dropout, context_length)
         self.transformer_blocks = nn.Sequential(*[TransformerBlock(context_length, d_model, num_heads, dropout) for _ in range(num_blocks)])
-        self.output_layer = nn.Linear(d_model, vocab_size)
+        self.output_layer = nn.Linear(d_model, vocab_size) 
         
     def forward(self, x, targets=None):
         B, T = x.shape # [batch_size, context_length]
         x = self.positional_encoding(self.token_embedding(x))
         x = self.transformer_blocks(x)
-        logits = self.output_layer(x)
+        logits = self.output_layer(x) # [batch_size, context_length, vocab_size]
 
         if targets is not None:
             B, T, C = logits.shape
@@ -113,17 +114,20 @@ class Model(nn.Module):
             loss = None
         return logits, loss
 
-    def generate(self, idx, max_new_tokens):
+    def generate(self, idx, max_new_tokens, temperature=1.0):
         # idx: [batch_size, context_length]
         for _ in range(max_new_tokens):
             # 截取最后 context_length 个token作为上下文
-            idx_crop = idx[:, -context_length:]
+            idx_crop = idx[:, -context_length:] # [batch_size, context_length]
+            # TODO(rogerluo): 这里的forward每次会对所有context token进行预测，效率很低, 可以使用cache优化
             logits, loss = self.forward(idx_crop)
             # 只需要最后一个位置的预测结果
-            logits_last_token = logits[:, -1, :]
+            # temperature 越大，概率分布越分散，越随机
+            # temperature 越小，概率分布越集中，越确定
+            logits_last_token = logits[:, -1, :] / temperature  # [batch_size, vocab_size]
             probs = F.softmax(logits_last_token, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1) 
-            idx = torch.cat((idx, idx_next), dim=1)
+            idx_next = torch.multinomial(probs, num_samples=1) # [batch_size, 1]
+            idx = torch.cat((idx, idx_next), dim=1) # [batch_size, context_length + 1]
         return idx
 
 
